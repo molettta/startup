@@ -1,1 +1,15 @@
 node_modules/
+dist/
+src/generated/
+
+.env
+.env.local
+.env.*.local
+
+*.log
+npm-debug.log*
+
+# Configuracao local do Claude Code (a settings.json compartilhada continua versionada)
+.claude/settings.local.json
+
+.DS_Store
