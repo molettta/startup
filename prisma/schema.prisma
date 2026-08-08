@@ -1,0 +1,93 @@
+// ============================================================================
+// SCHEMA DO PRISMA
+//
+// Este arquivo é a fonte única da verdade do banco de dados. A partir dele:
+//   - `npx prisma migrate dev`  gera o SQL e aplica no banco
+//   - `npx prisma generate`     gera o client TypeScript já tipado
+//
+// Ou seja: você NÃO escreve SQL e NÃO escreve os tipos das entidades à mão.
+// Mudou algo aqui? Rode `npm run db:migrate` para o banco acompanhar.
+// ============================================================================
+
+// O generator define o client que o Prisma vai gerar para você usar no código.
+// A partir do Prisma 7 o `output` é obrigatório: o client é gerado DENTRO do
+// projeto (e não escondido em node_modules), em src/generated/prisma.
+// Esse diretório está no .gitignore de propósito — é código gerado, e quem
+// clonar o repositório o recria com `npx prisma generate`.
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+// O datasource diz qual banco estamos usando.
+// Repare que NÃO existe `url` aqui: desde o Prisma 7 a connection string vive
+// no prisma.config.ts (para o CLI) e no adapter em src/lib/prisma.ts (para a
+// aplicação). Assim a credencial fica só no .env, nunca em arquivo versionado.
+datasource db {
+  provider = "postgresql"
+}
+
+// ----------------------------------------------------------------------------
+// User — quem faz login na API.
+// ----------------------------------------------------------------------------
+model User {
+  id Int @id @default(autoincrement())
+
+  name String
+
+  // @unique cria um índice único no banco. É ele que garante, no nível do
+  // banco, que não existem dois usuários com o mesmo email — mesmo que dois
+  // cadastros cheguem exatamente ao mesmo tempo e passem os dois pela
+  // verificação feita no controller.
+  email String @unique
+
+  // ATENÇÃO: aqui fica o *hash* da senha, nunca a senha em si.
+  // Quem gera o hash é o bcrypt, em src/controllers/user.controller.ts.
+  // Um hash bcrypt tem sempre 60 caracteres e começa com "$2b$10$".
+  password String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt // o Prisma atualiza sozinho a cada update
+
+  // Um usuário tem várias roles e uma role pertence a vários usuários (N:N).
+  // Ao declarar `Role[]` dos dois lados com o mesmo nome de relação, o Prisma
+  // cria e gerencia sozinho a tabela de junção — aqui, "_UserRoles".
+  // Isso se chama *relação many-to-many implícita*.
+  roles Role[] @relation("UserRoles")
+}
+
+// ----------------------------------------------------------------------------
+// Role — o "cargo" do usuário (Admin, User...). Agrupa permissões.
+// ----------------------------------------------------------------------------
+model Role {
+  id Int @id @default(autoincrement())
+
+  // @unique aqui não é só uma restrição: ele também permite buscar e conectar
+  // roles pelo nome (`where: { name: 'Admin' }`), que é o que o seed faz.
+  name String @unique
+
+  users       User[]       @relation("UserRoles")
+  permissions Permission[] @relation("RolePermissions")
+}
+
+// ----------------------------------------------------------------------------
+// Permission — uma ação concreta ("users:list", "users:write").
+//
+// POR QUE separar Role de Permission?
+// Se o código perguntasse "esse usuário é Admin?", cada nova regra viraria um
+// `if` novo espalhado pelos controllers, e criar um cargo intermediário
+// (um "Moderador", por exemplo) exigiria mexer em todos eles.
+// Perguntando "esse usuário tem a permissão users:list?", as rotas ficam
+// estáveis: dar ou tirar poder de um cargo vira só mudar o vínculo entre Role
+// e Permission — sem tocar em nenhuma rota. Esse desenho é o RBAC
+// (Role-Based Access Control).
+// ----------------------------------------------------------------------------
+model Permission {
+  id Int @id @default(autoincrement())
+
+  name String @unique
+
+  roles Role[] @relation("RolePermissions")
+}

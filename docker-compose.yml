@@ -1,0 +1,57 @@
+# ============================================================================
+# BANCO DE DADOS DE DESENVOLVIMENTO
+#
+# Sobe um PostgreSQL em container, para que ninguém precise instalar o banco na
+# própria máquina. Todo mundo do projeto roda exatamente a mesma versão.
+#
+#   npm run db:up     sobe    (docker compose up -d)
+#   npm run db:down   derruba (docker compose down)
+#
+# Os valores ${VARIAVEL:-padrao} são lidos do seu .env; o que vem depois do
+# ":-" é o padrão usado quando a variável não está definida.
+# ============================================================================
+
+services:
+  db:
+    # A versão está fixada de propósito. Usar "postgres:latest" faria a versão
+    # mudar sozinha entre máquinas e ao longo do tempo — origem clássica do
+    # "na minha máquina funciona".
+    image: postgres:17-alpine
+
+    container_name: fweapi-db
+
+    # Sobe de novo sozinho ao reiniciar o Docker, mas respeita um `db:down`.
+    restart: unless-stopped
+
+    # Na primeira execução, o Postgres cria o usuário e o banco a partir destas
+    # variáveis. ATENÇÃO: ele só faz isso com o volume vazio — mudá-las depois
+    # não tem efeito, é preciso apagar o volume (`docker compose down -v`).
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-fweapi}
+
+    # "porta_do_host:porta_do_container".
+    # Dentro do container o Postgres sempre escuta na 5432; no host usamos 5433
+    # por padrão para não conflitar com outro Postgres já rodando na 5432.
+    # É por isso que a DATABASE_URL do .env aponta para a 5433.
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+
+    # Volume nomeado: é o que faz os dados sobreviverem a um `db:down`.
+    # Sem ele, todo container derrubado levaria o banco junto.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+    # O container é considerado "healthy" só quando o Postgres aceita conexões.
+    # Container "rodando" e banco "pronto" são coisas diferentes: o Postgres
+    # leva alguns segundos para inicializar, e é nessa janela que uma migration
+    # disparada cedo demais falha.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-fweapi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
