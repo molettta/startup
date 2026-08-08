@@ -1,24 +1,62 @@
+// Configuração do compilador TypeScript.
+// (Sim, este .json aceita comentários — o TypeScript lê o formato JSONC.)
 {
   "compilerOptions": {
+    // Qual versão de JavaScript gerar. ES2022 é seguro no Node 18+ e mantém
+    // async/await e recursos modernos sem precisar transformá-los.
     "target": "ES2022",
+
+    // Sistema de módulos da saída. "commonjs" é o require/module.exports do
+    // Node — escolhido aqui por ser o caminho com menos atrito. (A alternativa,
+    // ESM, exige escrever a extensão .js nos imports, o que costuma confundir
+    // quem está começando.)
     "module": "commonjs",
     "moduleResolution": "node",
     "lib": ["ES2022"],
-    "rootDir": ".",
-    "outDir": "dist",
 
+    "rootDir": ".",
+    "outDir": "dist", // onde o `npm run build` coloca o JavaScript gerado
+
+    // ---- Rigor ----
+    // "strict" liga de uma vez o conjunto de checagens que faz o TypeScript
+    // valer a pena. A mais importante delas é o strictNullChecks, que separa
+    // `string` de `string | undefined` e elimina boa parte dos erros de
+    // "cannot read property of undefined" antes de o código rodar.
     "strict": true,
+
+    // Faz `array[0]` ter tipo `T | undefined`, e não `T`. É o correto: um
+    // índice pode não existir. Obriga a tratar o caso.
     "noUncheckedIndexedAccess": true,
+
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
 
+    // ---- Interoperabilidade ----
+    // Permite `import express from 'express'` com pacotes CommonJS, em vez do
+    // mais verboso `import * as express`.
     "esModuleInterop": true,
+
+    // Trata Arquivo.ts e arquivo.ts como nomes diferentes. macOS e Windows não
+    // diferenciam maiúsculas em nomes de arquivo, mas Linux sim — sem isto, um
+    // import com caixa errada funciona na sua máquina e quebra no servidor.
     "forceConsistentCasingInFileNames": true,
+
+    // Pula a checagem de tipos dos arquivos .d.ts das dependências. Acelera
+    // muito a compilação e evita erros vindos de código de terceiros.
     "skipLibCheck": true,
+
     "resolveJsonModule": true,
+
+    // Gera os .map, que fazem o stack trace de um erro apontar para a linha do
+    // .ts original em vez da linha do .js compilado.
     "sourceMap": true,
+
     "declaration": false
   },
+
+  // O que compilar. O prisma.config.ts precisa estar aqui para ser checado
+  // junto com o resto.
   "include": ["src/**/*.ts", "prisma/**/*.ts", "prisma.config.ts"],
+
   "exclude": ["node_modules", "dist"]
 }
