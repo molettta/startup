@@ -13,7 +13,7 @@
 // O client gerado não lê o .env sozinho: isso é responsabilidade da aplicação.
 import 'dotenv/config';
 
-import { defineConfig, env } from 'prisma/config';
+import { defineConfig } from 'prisma/config';
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
@@ -34,6 +34,15 @@ export default defineConfig({
   datasource: {
     // A connection string vem do ambiente, nunca escrita aqui — este arquivo
     // é versionado no Git.
-    url: env('DATABASE_URL'),
+    //
+    // POR QUE `process.env` e não o helper `env('DATABASE_URL')` do Prisma?
+    // Porque o helper lança um erro assim que este arquivo é carregado, e ele é
+    // carregado por TODO comando do Prisma — inclusive `prisma generate`, que
+    // nem usa o banco. Isso quebrava o `npm install` (que roda o generate pelo
+    // postinstall) em um clone recém-feito, onde o .env ainda não existe.
+    //
+    // Com `?? ''`, o generate funciona sem .env e só os comandos que realmente
+    // precisam do banco (migrate, seed, studio) reclamam da falta.
+    url: process.env.DATABASE_URL ?? '',
   },
 });

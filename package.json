@@ -4,6 +4,7 @@
   "description": "API de usuarios com RBAC - disciplina de FW API e padroes de projeto",
   "main": "dist/src/server.js",
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc",
     "start": "node dist/src/server.js",

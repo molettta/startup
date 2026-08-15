@@ -58,6 +58,11 @@ Cinco passos. Rode um de cada vez e confira a saída esperada de cada um.
 npm install
 ```
 
+Ao final, ele também gera o *client* do Prisma — o código TypeScript já tipado
+que a aplicação usa para falar com o banco. Esse client não vem no repositório
+(é gerado a partir do `prisma/schema.prisma`), e é o script `postinstall` que
+cuida disso para você.
+
 ### 2. Criar o arquivo de configuração
 
 ```bash
@@ -238,24 +243,36 @@ Abre o Prisma Studio no navegador, onde dá para navegar e editar as tabelas.
 ## Deu erro?
 
 <details>
-<summary><b>Cannot find module './generated/prisma/client'</b></summary>
+<summary><b>Cannot find module '../generated/prisma/client'</b></summary>
 
-O client do Prisma ainda não foi gerado. Ele não vai para o Git de propósito —
-é código gerado.
+O client do Prisma não foi gerado. Ele **não vem no repositório** de propósito:
+é código gerado a partir do `prisma/schema.prisma`, e versionar código gerado
+só causa conflito.
+
+Normalmente o `npm install` já o gera sozinho (pelo script `postinstall`). Se
+essa mensagem apareceu, gere na mão:
 
 ```bash
 npx prisma generate
 ```
+
+Apesar do nome parecido, **isto não tem relação com o pacote
+`@prisma/client`** das dependências. O que falta é o diretório
+`src/generated/prisma`, não um pacote do npm — reinstalar as dependências não
+resolve.
 </details>
 
 <details>
-<summary><b>Variável de ambiente DATABASE_URL não definida</b></summary>
+<summary><b>Connection url is empty</b> · <b>Variável de ambiente DATABASE_URL não definida</b></summary>
 
 Falta o arquivo `.env`. Volte ao passo 2:
 
 ```bash
 cp .env.example .env
 ```
+
+A primeira mensagem vem dos comandos do Prisma (`db:migrate`, `db:seed`,
+`db:studio`); a segunda, da aplicação ao iniciar. A causa é a mesma.
 </details>
 
 <details>
