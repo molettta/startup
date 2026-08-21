@@ -141,11 +141,14 @@ O servidor reinicia sozinho a cada arquivo salvo. Para parar, `Ctrl+C`.
 
 Confira que está no ar:
 
-```bash
-curl http://localhost:3000/health
+Abra <http://localhost:3000/health> no navegador. Deve responder:
+
+```json
+{ "status": "ok" }
 ```
 
-Deve responder `{"status":"ok"}`.
+(É um `GET` público, então o navegador serve. Para o resto da API você vai
+precisar de um cliente HTTP — veja [Testando a API](#testando-a-api).)
 
 ### Nas próximas vezes
 
@@ -175,57 +178,114 @@ npm run db:up && npm run dev
 | `POST` | `/users/login` | público — devolve o token |
 | `GET` | `/users` | exige token **e** a permissão `users:list` |
 
-### Roteiro completo pelo terminal
+### Roteiro completo no Postman ou no Bruno
 
-Com o servidor rodando, abra **outro** terminal e execute na ordem.
+Use o cliente que preferir — [Postman](https://www.postman.com/downloads/) ou
+[Bruno](https://www.usebruno.com/downloads). Os dois fazem a mesma coisa aqui;
+o Bruno tem a vantagem de salvar as requisições como arquivos de texto, que dá
+para versionar no Git junto com o projeto.
 
-**1. Tentar listar sem token — deve dar 401:**
+#### Prepare o ambiente (uma vez só)
 
-```bash
-curl -i http://localhost:3000/users
+Crie um **Environment** (Postman: canto superior direito → *Environments*;
+Bruno: aba *Environments* da coleção) com duas variáveis:
+
+| Variável | Valor |
+|---|---|
+| `baseUrl` | `http://localhost:3000` |
+| `token` | *(deixe vazio — será preenchido no login)* |
+
+Usar `{{baseUrl}}` nas URLs em vez de digitar o endereço evita ter que editar
+tudo se a porta mudar.
+
+#### Os requests, nesta ordem
+
+Com o servidor rodando (`npm run dev`), monte e dispare um de cada vez. A
+coluna da direita é o que **deve** acontecer — se vier outra coisa, algo está
+errado.
+
+**1. Listar sem token**
+
+| | |
+|---|---|
+| Método e URL | `GET {{baseUrl}}/users` |
+| Auth | nenhuma |
+| **Esperado** | **401** — `{"message":"Token não informado"}` |
+
+**2. Login como admin**
+
+| | |
+|---|---|
+| Método e URL | `POST {{baseUrl}}/users/login` |
+| Body | aba *Body* → **raw / JSON** (Postman) ou **JSON** (Bruno) |
+| | `{"email":"eduardo@example.com","password":"password123"}` |
+| **Esperado** | **200** — um objeto com o campo `token` |
+
+Copie o valor do `token` e cole na variável `token` do Environment. (Na seção
+seguinte tem como fazer isso automaticamente.)
+
+> Se esquecer de marcar o body como **JSON**, o cliente manda como texto puro,
+> a API não consegue interpretar e você recebe um 400. É o tropeço mais comum
+> aqui.
+
+**3. Listar com o token do admin**
+
+| | |
+|---|---|
+| Método e URL | `GET {{baseUrl}}/users` |
+| Auth | aba *Auth* → tipo **Bearer Token** → valor `{{token}}` |
+| **Esperado** | **200** — a lista de usuários |
+
+Repare que **nenhum usuário traz o campo `password`** na resposta. Nem o hash.
+
+**4. A parte interessante — o mesmo endpoint com um usuário comum**
+
+Refaça o passo 2 trocando o email por `user@example.com`, salve esse token, e
+repita o passo 3 com ele.
+
+| | |
+|---|---|
+| **Esperado** | **403** — `{"message":"Acesso negado: permissão 'users:list' necessária"}` |
+
+Pare um segundo aqui: o token é perfeitamente **válido** — a API sabe quem é a
+pessoa. O que falta é **permissão**. É exatamente essa a diferença entre 401 e
+403, e é o coração do [RBAC](#o-modelo-de-permissões-rbac).
+
+**5. Criar um usuário novo**
+
+| | |
+|---|---|
+| Método e URL | `POST {{baseUrl}}/users` |
+| Auth | nenhuma — o cadastro é público |
+| Body (JSON) | `{"name":"Fulano","email":"fulano@example.com","password":"senhaforte123"}` |
+| **Esperado** | **201** — o usuário criado, com a role `User` e **sem** o campo `password` |
+
+Vale testar os erros também: repita o mesmo request (**409**, email duplicado) e
+tente com `"password":"123"` (**400**, senha curta demais).
+
+#### Guardando o token automaticamente
+
+Copiar e colar o token a cada login cansa rápido — e ele expira em 1 hora. Os
+dois clientes sabem preencher a variável sozinhos.
+
+**No Postman**, no request de login, aba *Scripts* → *Post-response*:
+
+```js
+pm.environment.set("token", pm.response.json().token);
 ```
 
-**2. Fazer login como admin e guardar o token:**
+**No Bruno**, no request de login, aba *Script* → *Post Response*:
 
-```bash
-TOKEN=$(curl -s -X POST http://localhost:3000/users/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"eduardo@example.com","password":"password123"}' \
-  | sed -E 's/.*"token":"([^"]+)".*/\1/')
-echo $TOKEN
+```js
+bru.setEnvVar("token", res.body.token);
 ```
 
-**3. Listar os usuários com o token — deve dar 200:**
+A partir daí, todo request que usar `{{token}}` pega o valor mais recente:
+basta refazer o login quando expirar.
 
-```bash
-curl -s http://localhost:3000/users -H "Authorization: Bearer $TOKEN"
-```
+#### Confirmando que a senha virou hash
 
-Repare que **nenhum usuário traz o campo `password`** na resposta.
-
-**4. A parte interessante — o mesmo endpoint com um usuário comum:**
-
-```bash
-TOKEN_USER=$(curl -s -X POST http://localhost:3000/users/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"user@example.com","password":"password123"}' \
-  | sed -E 's/.*"token":"([^"]+)".*/\1/')
-
-curl -i http://localhost:3000/users -H "Authorization: Bearer $TOKEN_USER"
-```
-
-Responde **403 Forbidden**: o token é válido (sabemos quem é), mas essa pessoa
-não tem a permissão `users:list`. Essa é a diferença entre 401 e 403.
-
-**5. Criar um usuário novo:**
-
-```bash
-curl -s -X POST http://localhost:3000/users \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"Fulano","email":"fulano@example.com","password":"senhaforte123"}'
-```
-
-**6. Confirmar que a senha foi hasheada:**
+Isso não é um request — é uma olhada direta no banco:
 
 ```bash
 docker exec fweapi-db psql -U postgres -d fweapi \
@@ -383,23 +443,82 @@ São coisas diferentes, e o projeto as separa em middlewares distintos:
 
 ### O modelo de permissões (RBAC)
 
-```
-Usuário  --N:N-->  Role  --N:N-->  Permission
-Eduardo            Admin           users:list, users:write, users:read
-                   User            users:read
+**RBAC** é a sigla de *Role-Based Access Control* — controle de acesso baseado
+em cargos. É o desenho que responde à pergunta "essa pessoa pode fazer isso?"
+sem espalhar regra de acesso pelo código inteiro.
+
+#### O problema que ele resolve
+
+A forma ingênua de controlar acesso é perguntar quem a pessoa é:
+
+```ts
+// NÃO é assim que este projeto faz
+if (usuario.cargo === 'Admin') { ... }
 ```
 
-As rotas **não perguntam qual é o cargo do usuário**. Elas exigem uma permissão
-concreta:
+Funciona no começo. O problema aparece depois, e sempre da mesma forma: essa
+comparação se multiplica. Vira `if` em dez controllers diferentes. Aí o
+professor pede um cargo novo — um "Bibliotecário Chefe", um "Mecânico Sênior" —
+e você precisa achar os dez lugares e mudar todos para
+`=== 'Admin' || === 'ChefeDeAlgumaCoisa'`. Esquecer um é criar um furo de
+segurança silencioso, que ninguém percebe até alguém acessar o que não devia.
+
+A causa do problema: o código está perguntando **quem a pessoa é**, quando o
+que importa é **o que ela pode fazer**.
+
+#### A ideia: separar cargo de poder
+
+O RBAC introduz uma camada no meio. Pense em um prédio com chaves:
+
+| Conceito | No prédio | No sistema |
+|---|---|---|
+| **Permission** | uma chave que abre **uma** porta | `livros:write` — uma ação concreta |
+| **Role** | o molho de chaves de um cargo | `Bibliotecario` — um conjunto de permissões |
+| **User** | a pessoa que recebe o molho | quem faz login |
+
+A porta não pergunta o cargo de quem chegou. Ela pergunta **se a pessoa tem a
+chave**. Quem decide quais chaves cada cargo carrega é outra pessoa, em outro
+lugar — e mudar isso não exige trocar nenhuma fechadura.
+
+Traduzindo para as tabelas do banco, são duas relações N:N:
+
+```
+User  ──N:N──▶  Role  ──N:N──▶  Permission
+
+Eduardo         Admin           users:list, users:write, users:read
+                User            users:read
+```
+
+**N:N nos dois lados** porque uma pessoa pode acumular cargos (o Eduardo é
+`Admin` *e* `User`), e uma mesma permissão pode pertencer a vários cargos.
+
+#### Como isso aparece no código
+
+A rota declara a **permissão** que exige — nunca o cargo:
 
 ```ts
 router.get('/', authenticate, requirePermission('users:list'), getAllUsers);
 ```
 
-Isso importa: liberar essa rota para um cargo novo — um "Moderador", digamos —
-não exige mexer em nenhuma rota nem em nenhum controller. Basta dar a permissão
-ao cargo. O mapa de cargos e permissões está em
-[`prisma/seed.ts`](prisma/seed.ts).
+E o middleware, a cada requisição, percorre o caminho
+`usuário → roles → permissões`, achata tudo numa lista de nomes e verifica se a
+permissão pedida está lá. Está em [`src/middleware/auth.ts`](src/middleware/auth.ts).
+
+#### Por que o rodeio compensa
+
+Liberar a listagem de usuários para um "Moderador" novo, neste desenho, é
+**uma linha** no mapa de permissões:
+
+```ts
+Moderador: ['users:list'],
+```
+
+Nenhuma rota muda. Nenhum controller muda. Nenhum `if` novo. E como cada rota
+declara sua exigência ali mesmo, dá para **auditar o controle de acesso da API
+inteira** lendo os arquivos de rota — sem caçar condicional escondida no meio
+da regra de negócio.
+
+O mapa de cargos e permissões vive em [`prisma/seed.ts`](prisma/seed.ts):
 
 | Role | Permissões |
 |---|---|
@@ -408,6 +527,13 @@ ao cargo. O mapa de cargos e permissões está em
 
 > `users:read` e `users:write` já estão modeladas mas ainda não são exigidas por
 > nenhuma rota. São o ponto de partida para os exercícios da disciplina.
+
+#### A convenção dos nomes
+
+Os nomes seguem o padrão `recurso:ação` — `users:list`, `livros:write`,
+`prontuarios:read`. Não é exigência do código, é convenção: mantém os nomes
+previsíveis e agrupa visualmente as permissões de um mesmo recurso quando a
+lista cresce. Vale seguir no seu domínio.
 
 ### Estrutura dos arquivos
 

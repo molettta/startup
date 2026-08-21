@@ -300,30 +300,44 @@ nesse mapa**. Nenhuma rota e nenhum middleware mudam.
 
 ### Passo 7 — Teste
 
+Primeiro, o compilador:
+
 ```bash
 npm run typecheck   # o TypeScript compila?
 npm run dev         # sobe
 ```
 
-Em outro terminal:
+Depois, no Postman ou no Bruno. Se ainda não montou o Environment com
+`baseUrl` e `token`, o [README](README.md#roteiro-completo-no-postman-ou-no-bruno)
+explica — e vale configurar o script que salva o token sozinho, porque você vai
+repetir esses testes muitas vezes.
 
-```bash
-TOKEN=$(curl -s -X POST http://localhost:3000/users/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"eduardo@example.com","password":"password123"}' \
-  | sed -E 's/.*"token":"([^"]+)".*/\1/')
+Faça login como `eduardo@example.com` e então:
 
-curl -s -X POST http://localhost:3000/livros \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"titulo":"Dom Casmurro","autor":"Machado de Assis","isbn":"978-85-01"}'
+| Método e URL | Body (JSON) | Esperado |
+|---|---|---|
+| `POST {{baseUrl}}/livros` | `{"titulo":"Dom Casmurro","autor":"Machado de Assis","isbn":"978-85-01"}` | **201** |
+| `GET {{baseUrl}}/livros` | — | **200**, com o livro criado |
+| `POST {{baseUrl}}/livros/1/emprestimos` | — | **201** |
 
-curl -s http://localhost:3000/livros -H "Authorization: Bearer $TOKEN"
-```
+Lembre do *Bearer Token* com `{{token}}` na aba *Auth* dos três.
 
-Teste também o que **deve** falhar: sem token (401), com o `user@example.com`
-que não tem `livros:write` (403), e sem o campo `titulo` (400). Um endpoint que
-só foi testado no caminho feliz não foi testado.
+**Agora teste o que deve falhar.** Esta parte não é opcional — um endpoint que
+só foi testado no caminho feliz não foi testado:
+
+| O que fazer | Esperado |
+|---|---|
+| `GET {{baseUrl}}/livros` sem nenhum token | **401** |
+| `POST {{baseUrl}}/livros` com o token do `user@example.com` | **403** (ele não tem `livros:write`) |
+| `POST {{baseUrl}}/livros` sem o campo `titulo` | **400** |
+| `POST {{baseUrl}}/livros` repetindo o mesmo `isbn` | **409** |
+
+Se algum desses devolver **200** ou **201**, você tem um bug: ou faltou
+validação no controller, ou faltou `requirePermission` na rota.
+
+> **Dica:** no Bruno, a coleção é salva como arquivos `.bru` dentro de uma
+> pasta. Se você guardá-la no repositório, o professor consegue rodar os seus
+> testes exatamente como você os montou — e isso conta a favor na entrega.
 
 ---
 
