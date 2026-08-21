@@ -9,6 +9,11 @@ partida.
 
 **Stack:** TypeScript · Express 5 · Prisma 7 · PostgreSQL 17 (Docker)
 
+> **É aluno da disciplina e vai construir seu sistema em cima desta base?**
+> Comece por aqui para colocar o projeto no ar, e depois siga o
+> **[Guia do aluno](CONTRIBUTING.md)** — ele cobre o fork, como adicionar uma
+> funcionalidade nova ponta a ponta e como receber as correções da base.
+
 ---
 
 ## Sumário
