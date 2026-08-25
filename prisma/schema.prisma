@@ -56,6 +56,21 @@ model User {
   // cria e gerencia sozinho a tabela de junção — aqui, "_UserRoles".
   // Isso se chama *relação many-to-many implícita*.
   roles Role[] @relation("UserRoles")
+
+  // As vistorias que este usuário registrou.
+  //
+  // REPARE QUE NÃO EXISTE UMA TABELA "Vistoriador". Ser vistoriador é ter a
+  // role correspondente, não ser outro tipo de registro — quem responde "o que
+  // essa pessoa pode fazer?" é o RBAC, e quem responde "quem fez esta
+  // vistoria?" é a chave estrangeira lá no model Vistoria.
+  //
+  // Uma tabela 1:1 com User só se justifica quando o vistoriador ganhar
+  // atributos que SÓ ele tem (matrícula, região de atuação, assinatura). Até
+  // lá ela seria uma tabela com uma FK e mais nada: um join a cada consulta e
+  // um estado novo para tratar ("tem a role mas não tem a linha") em troca de
+  // zero informação. E criá-la depois é barato: nasce com `userId @unique`,
+  // sem migrar nenhuma linha existente.
+  vistorias Vistoria[] @relation("VistoriasDoVistoriador")
 }
 
 // ----------------------------------------------------------------------------
@@ -90,4 +105,75 @@ model Permission {
   name String @unique
 
   roles Role[] @relation("RolePermissions")
+}
+
+// ----------------------------------------------------------------------------
+// Vistoria — o registro de uma inspeção feita em campo.
+//
+// Os nomes deste bloco estão em português, diferente de User/Role/Permission,
+// porque aqui começa o *domínio* da aplicação: "vistoria" e "vistoriador" são
+// os termos que o cliente usa, e traduzi-los só criaria um dicionário a mais
+// para consultar ao ler o código.
+// ----------------------------------------------------------------------------
+model Vistoria {
+  id Int @id @default(autoincrement())
+
+  titulo    String
+  descricao String?
+
+  // Guardamos o status como texto por enquanto, e não como enum do Prisma.
+  // Enum no PostgreSQL é um tipo criado no banco: acrescentar um valor exige
+  // migration. Enquanto os status ainda estão sendo descobertos, texto + uma
+  // constante no código muda mais rápido. Vale trocar por enum quando a lista
+  // parar de mexer — aí o ganho de segurança de tipo compensa.
+  status String @default("RASCUNHO") // RASCUNHO | FINALIZADA
+
+  // QUEM FEZ A VISTORIA. É esta FK — e não uma tabela de vistoriador — que
+  // responde a pergunta.
+  vistoriadorId Int
+  vistoriador   User @relation("VistoriasDoVistoriador", fields: [vistoriadorId], references: [id])
+
+  fotos VistoriaFoto[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Índice na FK. Sem ele, "as vistorias do usuário X" varre a tabela inteira;
+  // com ele, o banco vai direto nas linhas certas. O @unique cria índice
+  // sozinho, mas uma FK comum não — é preciso pedir.
+  @@index([vistoriadorId])
+}
+
+// ----------------------------------------------------------------------------
+// VistoriaFoto — uma foto anexada a uma vistoria, com comentário opcional.
+// ----------------------------------------------------------------------------
+model VistoriaFoto {
+  id Int @id @default(autoincrement())
+
+  // O comentário que acompanha a foto ("infiltração no canto direito").
+  comentario String?
+
+  // ATENÇÃO: A FOTO EM SI NÃO ESTÁ AQUI.
+  //
+  // O banco guarda apenas o nome do arquivo salvo em disco (veja
+  // src/lib/upload.ts). Gravar o binário numa coluna faria três estragos:
+  // o dump de backup passaria a carregar todas as fotos, cada leitura traria
+  // a imagem inteira para a memória do servidor, e o navegador perderia a
+  // chance de cachear o arquivo. Banco guarda dado; arquivo fica em storage.
+  arquivo String
+
+  // Metadados do upload. `contentType` é o que permite devolver o header certo
+  // no download; `tamanhoBytes` evita ter que consultar o disco para exibir.
+  contentType  String
+  tamanhoBytes Int
+
+  // `onDelete: Cascade` manda o BANCO apagar as fotos quando a vistoria some.
+  // Sem isso, apagar uma vistoria com fotos falharia por violação de FK — ou,
+  // pior, deixaria fotos órfãs apontando para uma vistoria inexistente.
+  vistoriaId Int
+  vistoria   Vistoria @relation(fields: [vistoriaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([vistoriaId])
 }

@@ -164,10 +164,11 @@ npm run db:up && npm run dev
 
 ### Usuários criados pelo seed
 
-| Email | Senha | Roles | Pode listar usuários? |
-|---|---|---|---|
-| `eduardo@example.com` | `password123` | Admin, User | sim |
-| `user@example.com` | `password123` | User | **não** (403) |
+| Email | Senha | Roles | Pode listar usuários? | Vistorias que enxerga |
+|---|---|---|---|---|
+| `eduardo@example.com` | `password123` | Admin, User | sim | todas |
+| `user@example.com` | `password123` | User | **não** (403) | nenhuma (403) |
+| `vistoriador@example.com` | `password123` | Vistoriador | **não** (403) | só as dele |
 
 ### Endpoints
 
@@ -177,6 +178,51 @@ npm run db:up && npm run dev
 | `POST` | `/users` | público — cadastro |
 | `POST` | `/users/login` | público — devolve o token |
 | `GET` | `/users` | exige token **e** a permissão `users:list` |
+| `POST` | `/vistorias` | token + `vistorias:write` |
+| `GET` | `/vistorias` | token + `vistorias:read` |
+| `GET` | `/vistorias/:id` | token + `vistorias:read` |
+| `POST` | `/vistorias/:id/fotos` | token + `vistorias:write` — envia `multipart/form-data` |
+| `GET` | `/vistorias/:id/fotos/:fotoId/arquivo` | token + `vistorias:read` |
+| `PATCH` | `/vistorias/:id/finalizar` | token + `vistorias:write` |
+
+### Vistorias: permissão e posse
+
+As rotas de vistoria mostram uma distinção que as de usuário não tinham. A
+permissão diz o que você pode fazer **com o tipo**; ela não diz nada sobre uma
+**linha específica**:
+
+- `vistorias:read` — "posso ler vistorias". O middleware confere isso.
+- `vistorias:list` — amplia o alcance para as vistorias de **todo mundo**.
+
+O `Vistoriador` tem a primeira e não tem a segunda, então `GET /vistorias`
+devolve só as dele — quem aplica esse filtro é o controller, porque a resposta
+depende dos registros e o middleware roda antes de qualquer consulta.
+
+Pedir uma vistoria de outra pessoa responde **404, não 403**. Um 403 diria
+"existe, mas não é sua", e isso deixaria qualquer um mapear os ids do sistema
+variando o número na URL.
+
+Note também o que **não** foi preciso para criar o cargo de vistoriador:
+nenhuma tabela `Vistoriador`, nenhum campo novo em `User`, nenhum `if` no
+código — só uma role a mais em `prisma/seed.ts`. Uma tabela 1:1 com `User` só
+passa a valer a pena quando ele ganhar atributos que só ele tem (matrícula,
+região de atuação), e criá-la depois é barato: nasce com `userId @unique`, sem
+migrar nenhuma linha existente.
+
+### Onde as fotos ficam
+
+Em `uploads/`, na raiz do projeto (fora do controle de versão). O banco guarda
+apenas o **nome do arquivo**, nunca o binário — veja o porquê nos comentários
+de `prisma/schema.prisma` e `src/lib/upload.ts`.
+
+O nome original enviado pelo cliente é descartado: cada arquivo recebe um UUID.
+Isso evita que dois celulares mandando `IMG_0001.jpg` se sobrescrevam e impede
+que um nome como `../../.env` grave fora da pasta.
+
+Disco local resolve para desenvolvimento e para a disciplina. Em produção não
+serve: com duas instâncias da API, a foto enviada para uma não existe para a
+outra. A troca por S3 ou MinIO fica contida em `src/lib/upload.ts`, que é o
+único arquivo que sabe que existe um disco.
 
 ### Roteiro completo no Postman ou no Bruno
 

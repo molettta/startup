@@ -16,6 +16,7 @@ import express from 'express';
 
 import { errorHandler, notFoundHandler } from './middleware/error';
 import userRoutes from './routes/user.routes';
+import vistoriaRoutes from './routes/vistoria.routes';
 
 export function createApp() {
   const app = express();
@@ -42,6 +43,13 @@ export function createApp() {
   //    O prefixo '/users' é somado aos caminhos definidos no router, então o
   //    '/login' de lá vira '/users/login' aqui.
   app.use('/users', userRoutes);
+
+  //    As rotas de vistoria. Repare que o `express.json()` lá em cima NÃO dá
+  //    conta do upload de foto: aquele endpoint recebe multipart/form-data, e
+  //    quem lê esse formato é o middleware do multer, registrado na própria
+  //    rota (src/lib/upload.ts). Os dois convivem porque cada um só age no
+  //    Content-Type que reconhece.
+  app.use('/vistorias', vistoriaRoutes);
 
   // 4. 404 — só chega aqui quem não bateu em nenhuma rota acima.
   //    Por isso precisa ser o penúltimo: registrado antes das rotas, ele

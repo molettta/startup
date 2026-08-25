@@ -2,6 +2,10 @@ node_modules/
 dist/
 src/generated/
 
+# Fotos enviadas nas vistorias: dado de execucao, nao codigo.
+# Cada maquina tem as suas, e elas nao devem viajar no repositorio.
+uploads/
+
 .env
 .env.local
 .env.*.local

@@ -32,7 +32,28 @@ const BCRYPT_ROUNDS = 10;
  * conforme o sistema cresce.
  */
 const ROLE_PERMISSIONS = {
-  Admin: ['users:list', 'users:write', 'users:read'],
+  Admin: [
+    'users:list',
+    'users:write',
+    'users:read',
+    'vistorias:list',
+    'vistorias:write',
+    'vistorias:read',
+  ],
+
+  // O VISTORIADOR. Ele cria vistorias e anexa fotos ('vistorias:write') e
+  // consulta vistorias ('vistorias:read') — mas repare que NÃO tem
+  // 'vistorias:list'.
+  //
+  // Essa ausência é a regra de negócio: 'vistorias:read' dá acesso às
+  // vistorias, e 'vistorias:list' amplia esse acesso para as de todo mundo.
+  // Sem ela, o controller filtra pelas próprias.
+  //
+  // E repare no que NÃO foi preciso fazer para criar este cargo: nenhuma tabela
+  // nova, nenhum campo em User, nenhum `if` no código. Ser vistoriador é ter
+  // esta role — é exatamente o que o RBAC compra.
+  Vistoriador: ['vistorias:write', 'vistorias:read', 'users:read'],
+
   User: ['users:read'],
 } as const;
 
@@ -62,6 +83,7 @@ async function main() {
 
   const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: 'Admin' } });
   const userRole = await prisma.role.findUniqueOrThrow({ where: { name: 'User' } });
+  const vistoriadorRole = await prisma.role.findUniqueOrThrow({ where: { name: 'Vistoriador' } });
 
   // Hash gerado uma vez e reaproveitado pelos dois usuários, só para o seed não
   // demorar o dobro. Repare que os dois hashes ficam idênticos no banco — o que
@@ -99,9 +121,21 @@ async function main() {
     },
   });
 
+  await prisma.user.upsert({
+    where: { email: 'vistoriador@example.com' },
+    update: {},
+    create: {
+      name: 'Vitor Vistoriador',
+      email: 'vistoriador@example.com',
+      password,
+      roles: { connect: [{ id: vistoriadorRole.id }] },
+    },
+  });
+
   console.log('Banco populado com sucesso.');
-  console.log('  admin: eduardo@example.com / password123');
-  console.log('  user:  user@example.com / password123');
+  console.log('  admin:       eduardo@example.com / password123');
+  console.log('  user:        user@example.com / password123');
+  console.log('  vistoriador: vistoriador@example.com / password123');
 }
 
 main()
