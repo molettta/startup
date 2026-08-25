@@ -16,6 +16,7 @@ import type { Request, Response } from 'express';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 
 import { env } from '../config/env';
+import { Prisma } from '../generated/prisma/client';
 import { badRequest, conflict, unauthorized } from '../lib/errors';
 import { prisma } from '../lib/prisma';
 import type { JwtPayload } from '../types/auth';
@@ -32,6 +33,23 @@ const BCRYPT_ROUNDS = 10;
 
 /** Role atribuída a todo cadastro novo. Ninguém vira Admin se cadastrando. */
 const DEFAULT_ROLE = 'User';
+
+/**
+ * Mensagem de email duplicado, usada nos DOIS pontos que detectam o conflito
+ * (a consulta prévia e o erro do banco). Uma constante só garante que o cliente
+ * receba a mesma resposta nos dois caminhos.
+ */
+const EMAIL_CONFLICT_MESSAGE = 'Já existe um usuário com esse email';
+
+/**
+ * Código do Prisma para violação de restrição única (*unique constraint*).
+ *
+ * Os erros do Prisma são identificados por código, não pela mensagem: a
+ * mensagem é texto livre e muda entre versões, enquanto o código é estável e
+ * documentado. Ler `error.code` é a forma correta de distinguir um erro de
+ * banco esperado de um bug de verdade.
+ */
+const PRISMA_UNIQUE_VIOLATION = 'P2002';
 
 /**
  * Campos que podem sair numa resposta da API.
@@ -107,24 +125,53 @@ export async function createUser(req: Request, res: Response) {
   if (await prisma.user.findUnique({ where: { email: normalizedEmail } })) {
     // 409 Conflict: a requisição está correta, mas colide com o estado atual
     // do servidor. Diferente de 400, que é "sua requisição está malformada".
-    throw conflict('Já existe um usuário com esse email');
+    throw conflict(EMAIL_CONFLICT_MESSAGE);
   }
 
-  const user = await prisma.user.create({
-    data: {
-      name: name.trim(),
-      email: normalizedEmail,
+  const user = await prisma.user
+    .create({
+      data: {
+        name: name.trim(),
+        email: normalizedEmail,
 
-      // O HASH é gerado aqui. A senha em texto puro existe apenas nesta
-      // variável, em memória, e nunca chega ao banco.
-      password: await bcrypt.hash(password, BCRYPT_ROUNDS),
+        // O HASH é gerado aqui. A senha em texto puro existe apenas nesta
+        // variável, em memória, e nunca chega ao banco.
+        password: await bcrypt.hash(password, BCRYPT_ROUNDS),
 
-      // `connect` vincula a um registro que JÁ existe (a role criada pelo
-      // seed). Se fosse `create`, o Prisma tentaria criar uma role nova.
-      roles: { connect: { name: DEFAULT_ROLE } },
-    },
-    select: publicUserSelect, // a resposta sai sem o campo password
-  });
+        // `connect` vincula a um registro que JÁ existe (a role criada pelo
+        // seed). Se fosse `create`, o Prisma tentaria criar uma role nova.
+        roles: { connect: { name: DEFAULT_ROLE } },
+      },
+      select: publicUserSelect, // a resposta sai sem o campo password
+    })
+    // A verificação lá em cima resolve o caso do dia a dia, mas existe uma
+    // janela entre ela e este `create`: dois cadastros do mesmo email chegando
+    // ao mesmo tempo passam os dois pela consulta antes de qualquer um gravar.
+    // Isso se chama *condição de corrida* (race condition), e nenhuma quantidade
+    // de verificação prévia a elimina — quem garante a unicidade de fato é o
+    // índice @unique do banco, que rejeita o segundo INSERT.
+    //
+    // Sem este tratamento, o perdedor da corrida receberia um 500 ("erro interno
+    // do servidor"), quando na verdade o erro é dele e a resposta certa continua
+    // sendo o mesmo 409 de cima.
+    //
+    // Usamos `.catch()` no lugar de um try/catch em volta para não precisar
+    // tirar o `const user` daqui: como o handler abaixo SEMPRE lança, o
+    // TypeScript entende que ele não produz valor nenhum e mantém o tipo do
+    // `create`.
+    .catch((error: unknown) => {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === PRISMA_UNIQUE_VIOLATION
+      ) {
+        throw conflict(EMAIL_CONFLICT_MESSAGE);
+      }
+
+      // Qualquer outro erro é repassado sem alteração: só o error handler
+      // decide o que fazer com o que não sabemos tratar. Engolir o erro aqui o
+      // transformaria em um cadastro que "deu certo" sem ter criado nada.
+      throw error;
+    });
 
   // 201 Created é a resposta correta para "criei um recurso novo" — 200 seria
   // apenas "deu certo".

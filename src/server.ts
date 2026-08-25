@@ -35,7 +35,27 @@ async function main() {
    */
   const shutdown = async (signal: string) => {
     console.log(`\n${signal} recebido, encerrando...`);
-    server.close();
+
+    // `server.close()` NÃO derruba a conexão de quem já está sendo atendido: ele
+    // apenas para de aceitar conexões novas e avisa, pelo callback, quando as
+    // requisições em andamento terminaram.
+    //
+    // Como esse aviso vem por callback e não por Promise, envolvemos a chamada
+    // num `new Promise` para poder usar `await` — o padrão se chama
+    // *promisificação*. Sem esse await, as duas linhas seguintes rodariam de
+    // imediato e o `$disconnect()` fecharia o banco no meio de uma consulta que
+    // ainda estava respondendo; era exatamente esse o "ordenado" que faltava.
+    //
+    // O argumento de erro do callback é ignorado de propósito: ele só aparece
+    // quando o servidor já não estava no ar, e aí não há nada a esperar mesmo.
+    // Sobre keep-alive: o navegador mantém a conexão TCP aberta depois da
+    // resposta, para reaproveitá-la na requisição seguinte. Essas conexões
+    // ociosas NÃO seguram o encerramento — desde o Node 19 o próprio
+    // `close()` as derruba, esperando apenas as requisições em andamento.
+    // (Em versões anteriores era preciso chamar `server.closeIdleConnections()`
+    // à mão, senão o Ctrl+C parecia travar por alguns segundos.)
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+
     await prisma.$disconnect();
     process.exit(0);
   };
