@@ -109,8 +109,10 @@ npm run db:migrate
 ```
 
 Esse comando lê o `prisma/schema.prisma`, gera o SQL correspondente e o aplica
-no banco. Ao final, ele também gera o *client* do Prisma — o código TypeScript
-já tipado que a aplicação usa para consultar o banco.
+no banco. Ao final, o script roda também o `prisma generate`, que gera o
+*client* do Prisma — o código TypeScript já tipado que a aplicação usa para
+consultar o banco. (No Prisma 7 o `prisma migrate dev` sozinho **não** gera o
+client; por isso use sempre `npm run db:migrate`.)
 
 ### 5. Popular com dados iniciais
 
@@ -392,6 +394,24 @@ no banco e regenera o client.
 </details>
 
 <details>
+<summary><b>Property '...' does not exist on type 'PrismaClient' / Cannot read properties of undefined (reading 'findMany')</b></summary>
+
+O banco já tem a tabela nova, mas o client do Prisma ainda é o antigo. O
+primeiro erro aparece no `npm run typecheck`; o segundo é o que a API devolve
+(com status 500) ao chamar a rota nova, porque o `npm run dev` não checa tipos
+e sobe mesmo assim.
+
+Acontece quando a migration foi rodada com `npx prisma migrate dev` direto: no
+Prisma 7 esse comando **não regenera mais o client**. Gere na mão:
+
+```bash
+npx prisma generate
+```
+
+O `npm run db:migrate` já faz as duas coisas — prefira sempre ele.
+</details>
+
+<details>
 <summary><b>Quero começar do zero</b></summary>
 
 Apaga o banco inteiro, recria as tabelas e roda o seed:
@@ -626,7 +646,7 @@ tipos do TypeScript passam a refletir o campo novo na hora.
 | `npm run typecheck` | verifica os tipos sem gerar arquivos |
 | `npm run db:up` | sobe o container do Postgres |
 | `npm run db:down` | derruba o container (os dados ficam salvos) |
-| `npm run db:migrate` | cria e aplica uma migration |
+| `npm run db:migrate` | cria e aplica uma migration e regenera o client |
 | `npm run db:seed` | popula o banco (pode rodar quantas vezes quiser) |
 | `npm run db:reset` | apaga tudo, recria as tabelas e roda o seed |
 | `npm run db:studio` | abre a interface gráfica do banco |

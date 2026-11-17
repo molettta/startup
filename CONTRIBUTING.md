@@ -162,9 +162,25 @@ npm run db:migrate
 ```
 
 Ele pede um nome para a migration — use algo descritivo, como
-`adiciona-livros`. Esse comando faz três coisas de uma vez: gera o SQL, aplica
+`adiciona-livros`. Esse script faz três coisas de uma vez: gera o SQL, aplica
 no banco e **regenera os tipos**. A partir daqui `prisma.livro` existe e o
 autocomplete conhece os campos.
+
+> **Rode pelo `npm run`, não com `npx prisma migrate dev`.** No Prisma 7 o
+> `migrate dev` só cuida do banco: ele **não regenera mais o client** (até o
+> Prisma 6 regenerava). Quem regenera é o `prisma generate`, que o nosso
+> script `db:migrate` roda logo em seguida. Se você chamou o comando do Prisma
+> direto, complete com:
+>
+> ```bash
+> npx prisma generate
+> ```
+>
+> Sem isso o código não enxerga o model novo, e o sintoma é este: o
+> `npm run typecheck` acusa `Property 'livro' does not exist on type
+> 'PrismaClient...'` e, como o `npm run dev` não checa tipos, a API sobe
+> normalmente, mas toda chamada à rota nova responde 500 com
+> `Cannot read properties of undefined (reading 'findMany')`.
 
 ### Passo 3 — Escreva a regra de negócio
 
@@ -373,6 +389,11 @@ Se a base mudou o schema, rode a migration depois do merge:
 npm run db:migrate
 ```
 
+Ele aplica no seu banco as migrations que vieram da base e regenera o client.
+As duas coisas importam: sem a segunda, o banco muda mas o código continua
+enxergando o schema antigo (veja o sintoma no
+[Passo 2 da seção 3](#passo-2--aplique-no-banco)).
+
 > **Puxe cedo e com frequência.** Um merge de uma correção pequena é trivial.
 > Acumular dois meses de divergência e tentar juntar tudo na véspera da entrega
 > é onde a coisa vira pesadelo.
@@ -428,14 +449,18 @@ git merge --abort
 
 **Não edite `src/generated/`.** É código gerado a partir do schema, não vai
 para o Git, e o próximo `npm install` sobrescreve tudo. Para mudar o que tem
-ali, mude o `schema.prisma` e rode a migration.
+ali, mude o `schema.prisma` e rode `npm run db:migrate`.
 
 **Campo obrigatório em tabela com dados.** Adicionar `String` (sem `?`) a uma
 tabela que já tem linhas faz a migration falhar — o Postgres não sabe o que pôr
 nas linhas existentes. Use `String?` ou dê um `@default("...")`.
 
-**Esqueceu de rodar a migration.** Mudou o schema e o código não enxerga o
-campo novo? Faltou `npm run db:migrate`.
+**Esqueceu de rodar a migration (ou o generate).** Mudou o schema e o código
+não enxerga o campo novo: `Property '...' does not exist on type
+'PrismaClient...'` no `npm run typecheck`, ou 500 com `Cannot read properties
+of undefined` na rota nova? Faltou `npm run db:migrate`. Se você rodou
+`npx prisma migrate dev` direto, o banco já está certo e falta só
+`npx prisma generate`: no Prisma 7 o migrate não regenera o client.
 
 **`Cannot find module '../generated/prisma/client'`.** Rode `npx prisma
 generate`. Isso **não** tem relação com o pacote `@prisma/client` — veja a
